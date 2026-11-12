@@ -1,0 +1,18 @@
+# Virtual environment — contains absolute paths tied to one machine.
+# Each user recreates it with:  ./run.sh setup
+.venv/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Generated at runtime (recreated by the server / run.sh)
+data/events.jsonl
+data/defense.jsonl
+data/.runtime_port
+
+# Editor / OS noise
+.idea/
+.vscode/
+.DS_Store
