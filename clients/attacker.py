@@ -20,7 +20,9 @@ Usage:
 import argparse
 import asyncio
 import json
+import os
 import sys
+import threading
 from pathlib import Path
 
 import websockets
@@ -43,6 +45,9 @@ def read_password(prompt: str = "Password: ") -> str:
     if not sys.stdin.isatty():
         import getpass
         return getpass.getpass(prompt)
+
+    if os.name == "nt":
+        return _read_password_windows(prompt)
 
     try:
         import termios
@@ -84,15 +89,74 @@ def read_password(prompt: str = "Password: ") -> str:
     return "".join(buf)
 
 
+def _read_password_windows(prompt: str) -> str:
+    """Windows console version of the '*'-echo prompt (no termios there)."""
+    import msvcrt
+
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    buf: list[str] = []
+    while True:
+        ch = msvcrt.getwch()
+        if ch in ("\r", "\n"):
+            break
+        if ch == "\x03":                           # Ctrl-C
+            sys.stdout.write("\n")
+            raise KeyboardInterrupt
+        if ch == "\x1a" and not buf:               # Ctrl-Z = EOF on Windows
+            sys.stdout.write("\n")
+            raise EOFError
+        if ch in ("\x00", "\xe0"):                 # arrow/function key prefix
+            msvcrt.getwch()
+            continue
+        if ch == "\b":
+            if buf:
+                buf.pop()
+                sys.stdout.write("\b \b")
+                sys.stdout.flush()
+            continue
+        buf.append(ch)
+        sys.stdout.write("*")
+        sys.stdout.flush()
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+    return "".join(buf)
+
+
+def _in_daemon_thread(fn, *args):
+    """
+    Run a blocking call (input/password prompt) in a DAEMON thread.
+
+    loop.run_in_executor() uses a thread pool that asyncio.run() waits for on
+    exit, so Ctrl-C would hang until the user pressed Enter. A daemon thread
+    lets the program quit immediately on every OS.
+    """
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+
+    def deliver(setter, value):
+        if not fut.done():
+            setter(value)
+
+    def runner():
+        try:
+            result = fn(*args)
+        except BaseException as exc:            # noqa: BLE001 - forwarded to caller
+            loop.call_soon_threadsafe(deliver, fut.set_exception, exc)
+        else:
+            loop.call_soon_threadsafe(deliver, fut.set_result, result)
+
+    threading.Thread(target=runner, daemon=True).start()
+    return fut
+
+
 async def ainput(prompt: str = "") -> str:
     """Async wrapper around blocking input()."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, input, prompt)
+    return await _in_daemon_thread(input, prompt)
 
 
 async def aread_password(prompt: str = "Password: ") -> str:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, read_password, prompt)
+    return await _in_daemon_thread(read_password, prompt)
 
 
 # --------------------------------------------------------------------------
@@ -214,6 +278,15 @@ def main() -> None:
         asyncio.run(session(args.url, args.nick, Path(args.wordlist)))
     except (KeyboardInterrupt, EOFError):
         print("\nConnection to Server.app closed.")
+    except websockets.exceptions.InvalidURI:
+        sys.exit(f"[!] bad URL: {args.url}\n    expected: ws://<server-ip>:<port>/ws")
+    except (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException) as exc:
+        sys.exit(
+            f"[!] could not reach the server at {args.url}\n"
+            f"    ({exc.__class__.__name__}: {exc})\n"
+            "    Check: same WiFi as the host? correct IP and port? host firewall\n"
+            "    allows the port? (guest/school WiFi may block device-to-device\n"
+            "    traffic -- use a phone hotspot)")
 
 
 if __name__ == "__main__":

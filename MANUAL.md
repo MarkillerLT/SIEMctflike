@@ -21,12 +21,14 @@ siem-ctf/
 ├── clients/
 │   ├── attacker.py    # attacker CLI (SSH-style login terminal)
 │   ├── monitor.py     # host SIEM monitor CLI (live colored feed)
-│   └── grade.py       # grading / report tool (per-attacker results table)
+│   ├── grade.py       # grading / report tool (per-attacker results table)
+│   └── showcase.py    # end-to-end demo + smoke test
 ├── data/
 │   ├── passwords.txt  # the shared wordlist / password library (dictionary)
 │   ├── events.jsonl   # vulnerability/event log      (auto-generated)
 │   └── defense.jsonl  # defense logbook / bitácora    (auto-generated)
-├── run.sh             # helper launcher (setup / server / monitor / attack / grade / ip / reset)
+├── run.sh             # helper launcher, Linux/macOS (setup / server / monitor / attack / grade / ip / reset / showcase)
+├── run.ps1            # same launcher for Windows PowerShell
 ├── requirements.txt
 └── MANUAL.md
 ```
@@ -47,6 +49,7 @@ commands. From the project root:
 | `./run.sh grade` | print the per-attacker results table (grading) |
 | `./run.sh ip` | print `ws://<your-ip>:<port>/ws` for classmates |
 | `./run.sh reset` | empty both logs for a fresh session |
+| `./run.sh showcase` | end-to-end demo + smoke test of all levels (see below) |
 | `./run.sh help` | show usage |
 
 Typical classroom run — three terminals:
@@ -71,9 +74,72 @@ server records it in `data/.runtime_port`), so you don't have to repeat it. You
 can still point an attacker at another host explicitly with
 `URL=ws://192.168.1.42:9000/ws ./run.sh attack bob`.
 
+**Showcase / smoke test.** Before class (or after editing `config.py` /
+`passwords.txt`), run `./run.sh showcase` — or on any OS
+`python clients/showcase.py`. It starts the server in-process on `127.0.0.1`
+with logs in a temp folder (your real logs are untouched), runs scripted
+attackers through easy → medium → hard (lockout, lock expiry, nickname-rotation
+bypass), checks the protocol and the grade table, and exits `0`/`1` with a
+PASS/FAIL checklist. `--quiet` hides the live feed, `--keep` keeps the temp logs.
+
 > `run.sh` needs the venv. Run `./run.sh setup` once first (or the manual setup
 > in §1). Everything after this section is the longhand equivalent if you'd
 > rather run the commands yourself.
+
+---
+
+## Student setup — Windows / macOS / Linux
+
+You (the host) run the **server + monitor**; each student runs only the
+**attacker** from their own PC. Everyone needs **Python 3.10+** and a copy of
+this folder. On Windows use `run.ps1`; on macOS/Linux use `run.sh` — the
+commands are the same.
+
+**1. Install Python 3.10+ (once)**
+
+| OS | How |
+|---|---|
+| Windows | `winget install Python.Python.3.12`, or python.org installer **with "Add python.exe to PATH" ticked**. Don't rely on the Microsoft Store `python` stub. |
+| macOS | `brew install python`, or the python.org installer. (Old Macs ship 3.9 — too old.) |
+| Linux | `python3` + `python3-venv` from the package manager |
+
+**2. Set up + attack**
+
+```powershell
+# Windows (PowerShell, inside the project folder)
+powershell -ExecutionPolicy Bypass -File .\run.ps1 setup
+powershell -ExecutionPolicy Bypass -File .\run.ps1 attack <your-name> ws://<host-ip>:<port>/ws
+```
+
+```bash
+# macOS / Linux (Terminal, inside the project folder)
+./run.sh setup
+./run.sh attack <your-name> ws://<host-ip>:<port>/ws
+```
+
+The host gets `ws://<host-ip>:<port>/ws` from the server's startup banner (or
+`./run.sh ip`) and writes it on the board.
+
+**Windows notes**
+- `-ExecutionPolicy Bypass` avoids *"running scripts is disabled on this
+  system"*. Alternatively, once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+  (and `Unblock-File .\run.ps1` if the folder came from a downloaded ZIP).
+- Password typing shows `*` just like on macOS/Linux.
+- Use Windows Terminal or PowerShell; the old `cmd.exe` window works too.
+
+**macOS notes**
+- If `./run.sh` says *permission denied*: `chmod +x run.sh` (ZIP downloads can
+  drop the executable bit), or run `bash run.sh setup`.
+
+**If a student can't connect** the attacker prints a checklist. In order:
+same WiFi as the host → correct IP **and port** → host firewall allows the
+port (§6) → guest/school WiFi client isolation (use a phone hotspot, §6).
+
+**If the host runs Windows/macOS instead of Linux:** `.\run.ps1 server` /
+`./run.sh server` works the same. Accept the OS firewall prompt for Python
+(Windows: tick **Private networks**; the server prints a `New-NetFirewallRule`
+command if no prompt appears). Make sure the WiFi profile is set to
+*Private*, not *Public*, on Windows.
 
 ---
 

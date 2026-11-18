@@ -93,7 +93,14 @@ RUNTIME_PORT_FILE = DATA_DIR / ".runtime_port"
 def port_is_free(port: int, host: str = HOST) -> bool:
     """True if we can bind host:port right now."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if os.name == "nt":
+            # On Windows SO_REUSEADDR lets you bind a port that is ALREADY in
+            # use, so the probe would always say "free". Use exclusive mode.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            # Linux/macOS: still fails if someone is listening, but ignores
+            # leftover TIME_WAIT sockets from a server you just stopped.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
             return True

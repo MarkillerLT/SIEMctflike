@@ -21,6 +21,7 @@ Run after a session:
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -87,6 +88,9 @@ def rows_for(results: dict[str, dict[str, bool]]):
             status = "Pass" if passed else "not pass"
             yield (who, acct["username"], flag, status, passed)
 
+
+if os.name == "nt":
+    os.system("")   # enable ANSI colors in the Windows console
 
 # ANSI (harmless if unsupported)
 GREEN = "\033[92m"

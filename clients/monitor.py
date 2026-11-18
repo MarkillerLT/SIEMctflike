@@ -14,9 +14,13 @@ Usage:
 import argparse
 import asyncio
 import json
+import os
 from collections import defaultdict
 
 import websockets
+
+if os.name == "nt":
+    os.system("")   # enable ANSI colors in the Windows console
 
 # ANSI colors (works in most terminals; harmless if not supported)
 RED = "\033[91m"
